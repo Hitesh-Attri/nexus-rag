@@ -1,9 +1,15 @@
-"""The vector store: persist chunks + their embeddings, and search them."""
+"""The vector store: persist chunks with their embeddings, and search them.
+
+Embeddings arrive as plain lists; this layer wraps them in pgvector's Vector so
+psycopg sends them as the Postgres `vector` type. That keeps both writes and
+similarity queries free of SQL casts and of any implicit-coercion assumptions.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
+from pgvector import Vector
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
@@ -19,7 +25,7 @@ def insert_chunks(
     """Insert one row per chunk. Returns the number of rows written."""
     meta = Jsonb(metadata or {})
     rows = [
-        (source, chunk, meta, emb)
+        (source, chunk, meta, Vector(emb))
         for chunk, emb in zip(chunks, embeddings, strict=True)
     ]
 
@@ -43,6 +49,7 @@ def search(embedding: list[float], top_k: int) -> list[dict[str, Any]]:
         That's why the query embedding appears twice (once for the score, once for the ordering).
         dict_row makes each row come back as a dict instead of a tuple.
     """
+    query = Vector(embedding)
     with get_pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT id, source, content, metadata, "
@@ -50,6 +57,6 @@ def search(embedding: list[float], top_k: int) -> list[dict[str, Any]]:
             "FROM documents "
             "ORDER BY embedding <=> %s "
             "LIMIT %s",
-            (embedding, embedding, top_k),
+            (query, query, top_k),
         )
         return cur.fetchall()
