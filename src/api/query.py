@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from core.rag import retrieve
+from core.gateway import GatewayError
+from core.rag import answer_question
 
 router = APIRouter()
 
@@ -24,14 +25,26 @@ class Source(BaseModel):
 
 class QueryResponse(BaseModel):
     question: str
+    answer: str
+    provider: str | None = None
+    model: str | None = None
     sources: list[Source]
 
 
 @router.post("/query", response_model=QueryResponse)
 def query(body: QueryRequest) -> QueryResponse:
-    results = retrieve(body.question, body.top_k)
+    try:
+        result = answer_question(body.question, body.top_k)
+    except GatewayError as e:
+        raise HTTPException(status_code=503, detail=f"generation failed: {e}") from e
     sources = [
         Source(id=r["id"], source=r["source"], content=r["content"], similarity=r["similarity"])
-        for r in results
+        for r in result["sources"]
     ]
-    return QueryResponse(question=body.question, sources=sources)
+    return QueryResponse(
+        question=body.question,
+        answer=result["answer"],
+        provider=result["provider"],
+        model=result["model"],
+        sources=sources,
+    )
