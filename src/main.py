@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from api.health import router as health_router
 from api.ingest import router as ingest_router
 from api.query import router as query_router
+from api.search import router as search_router
 from core.db import get_pool
 from core.embeddings import get_embedder
 
@@ -30,6 +31,7 @@ app = FastAPI(title="nexus-rag", version="0.1.0", lifespan=lifespan)
 app.include_router(health_router)
 app.include_router(ingest_router)
 app.include_router(query_router)
+app.include_router(search_router)
 
 
 if __name__ == "__main__":
